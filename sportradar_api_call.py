@@ -284,8 +284,15 @@ def create_db(testing):
         )''')
     conn.commit()
 
-
+##############################################################################################################################should do this one first, the rest can mimic this
 def populate_seasons_table(testing, seasons, season_ids):
+    """
+        Inserts season records into the season tables
+    :param testing: if you are testing or debugging
+    :param seasons: list of years of seasons we are getting data for
+    :param season_ids: sport radar IDs for each respective season
+    :return:
+    """
     if testing:
         conn = sqlite3.connect('TestDB.db')
     else:
@@ -294,15 +301,24 @@ def populate_seasons_table(testing, seasons, season_ids):
     conn.commit()
 
 
-# parse the XML to get the root
 def get_xml(link):
+    """
+        gets the XML tree
+    :param link: API link
+    :return: XML content / tree
+    """
     xml = requests.get(link)
     return xml.content
 
 
 # take the root to parse and get the ID
-# input -   testing = whether or not this is a test run
 def create_obj_ids(testing, obj):
+    """
+        gets SportRadar's season and team IDs
+    :param testing: if you are testing or debugging
+    :param obj: team or season string
+    :return: list of SportRadar IDs (not ints)
+    """
     if testing:
         if obj == 'team':
             it = ET.iterparse("/Users/Atharva/Documents/Github/NBA_Analysis/teams-sample.xml")
@@ -323,49 +339,140 @@ def create_obj_ids(testing, obj):
 
     object_id_list = list()
 
-    for item in root.iter(object):
+    for item in root.iter(obj):
+
         list_id = item.attrib['id']  # returns a dictionary with each attrib of the team tag, pulling only ID
         object_id_list.append(list_id)
 
+    print(obj)
+    print(object_id_list)
     return object_id_list
 
 
 def insert_team_team(testing, df):
+    """
+        insert team data into DB
+    :param testing: if you are testing or debugging
+    :param df: data frame generated to place into DB
+    :return:
+    """
     if testing:
         conn = sqlite3.connect('TestDB.db')
     else:
         conn = sqlite3.connect('NBA_Statistics.db')
 
+    print('1\n', df)
     cur = conn.cursor()
     conn.commit()
     pass
 
 
 def insert_team_total(testing, df):
+    """
+        insert team totals data into DB
+    :param testing: if you are testing or debugging
+    :param df: data frame generated to place into DB
+    :return:
+    """
     if testing:
         conn = sqlite3.connect('TestDB.db')
     else:
         conn = sqlite3.connect('NBA_Statistics.db')
 
+    print('2\n', df)
     cur = conn.cursor()
     conn.commit()
     pass
 
 
 def insert_team_average(testing, df):
+    """
+        insert team averages data into DB
+    :param testing: if you are testing or debugging
+    :param df: data frame generated to place into DB
+    :return:
+    """
     if testing:
         conn = sqlite3.connect('TestDB.db')
     else:
         conn = sqlite3.connect('NBA_Statistics.db')
 
+    print('3\n', df)
     cur = conn.cursor()
     conn.commit()
     pass
 
 
-# take the root to parse and get the ID
-# input -   testing = whether or not this is a test run
+def insert_player_player(testing, df):
+    """
+        insert player data into DB
+    :param testing: if you are testing or debugging
+    :param df: data frame generated to place into DB
+    :return:
+    """
+    if testing:
+        conn = sqlite3.connect('TestDB.db')
+    else:
+        conn = sqlite3.connect('NBA_Statistics.db')
+
+    print('4\n', df)
+    cur = conn.cursor()
+    conn.commit()
+    pass
+
+
+def insert_player_total(testing, df):
+    """
+        insert player totals data into DB
+    :param testing: if you are testing or debugging
+    :param df: data frame generated to place into DB
+    :return:
+    """
+    if testing:
+        conn = sqlite3.connect('TestDB.db')
+    else:
+        conn = sqlite3.connect('NBA_Statistics.db')
+
+    print('5\n', df)
+    cur = conn.cursor()
+    conn.commit()
+    pass
+
+
+def insert_player_average(testing, df):
+    """
+        insert player averages data into DB
+    :param testing: if you are testing or debugging
+    :param df: data frame generated to place into DB
+    :return:
+    """
+    if testing:
+        conn = sqlite3.connect('TestDB.db')
+    else:
+        conn = sqlite3.connect('NBA_Statistics.db')
+
+    print('6\n', df)
+    cur = conn.cursor()
+    conn.commit()
+    pass
+
+
 def df_generator(testing, tree, feeds):
+    """
+        this is the most confusing part. There are a lot of small things going on here.
+
+    First we clean the XML as needed. Then, we make lists for the keys and values. I didn't use a dictionary because the
+    values will be updated every loop in the inner loop. Since this loop is shared by the team DF generations as well as
+    the players DF, this uses generic terms which certainly don't help in understanding. It goes through the process and
+    generates 3 DFs that will feed the insert statements into the DB.
+
+    :param testing: if you are testing or debugging
+    :param tree: the entire XML tree provided by the API
+    :param feeds: this is a 3-item string, with either "player_records" or "team_records" in the first slot, then
+    "total" and "average"
+    :return:
+
+    """
     # from https://stackoverflow.com/a/25920989
     for _, el in tree:
         if '}' in el.tag:
@@ -379,53 +486,62 @@ def df_generator(testing, tree, feeds):
     attrib_avg_values = list()
     attrib_avg_keys = list()
 
+    # this line is here because the tree has <team>, and children <player_records> and <team_records>. Using base_node
+    # for the first loop ensures that we don't take the player_records "total"/"avg" attributes (that is how the iter()
+    # function from ElementTree works). Splitting it allows us to use team (which we need for the team entity list,
+    # and team_records to limit it to ONLY team totals and averages
+    #
+    # Even worse, for players, <player_records> is the parent to <player>. But this handles that because it shouldn't
+    # player_records doesn't have it's own attributes.
     base_node = feeds[0].split('_')[0]
 
+    # So we import team_record but are only using team for the team entity attributes (this loop)
     for item in root.iter(base_node):
-        attrib_entity_keys = (list(item.attrib.keys()))
+        # don't have to do this for keys every time, is only for the DF headers
+        if len(attrib_entity_keys) == 0:
+            attrib_entity_keys = (list(item.attrib.keys()))
+        # this adds the current total records to the list, where each total.attrib.values() is a new list item
         attrib_entity_values.append(list(item.attrib.values()))
 
+    # obj would be "team_records" or "player_records", this will limit it to the correct node children
     for obj in root.iter(feeds[0]):
+        # Within the _records nodes, we pull the total and average for each entity.
+        # this logic is the same as the loop above, just that it is using feeds as the filter in iter()
         for total in obj.iter(feeds[1]):
-            attrib_total_keys = (list(total.attrib.keys()))
+            if len(attrib_total_keys) == 0:
+                attrib_total_keys = (list(total.attrib.keys()))
             attrib_total_values.append(list(total.attrib.values()))
-            print('here')
 
         for average in obj.iter(feeds[2]):
-            attrib_avg_keys = (list(average.attrib.keys()))
+            if len(attrib_avg_keys) == 0:
+                attrib_avg_keys = (list(average.attrib.keys()))
             attrib_avg_values.append(list(average.attrib.values()))
 
-    # print(attrib_entity_keys)
-    # print(attrib_entity_values)
-
-
-    entity_df = pd.DataFrame(attrib_entity_values,columns=attrib_entity_keys)
+    # convert the list of lists of values, and keys into a DF, feed this to the insert functions
+    entity_df = pd.DataFrame(attrib_entity_values, columns=attrib_entity_keys)
     total_df = pd.DataFrame(attrib_total_values, columns=attrib_total_keys)
     average_df = pd.DataFrame(attrib_avg_values, columns=attrib_avg_keys)
-    print(entity_df)
-    print(total_df)
-    print(average_df)
 
-    if feeds[0] == 'team':
+    # call certain products based on the entity
+    if feeds[0] == 'team_records':
         insert_team_team(testing, entity_df)
         insert_team_total(testing, total_df)
         insert_team_average(testing, average_df)
+    else:
+        insert_player_player(testing, entity_df)
+        insert_player_total(testing, total_df)
+        insert_player_average(testing, average_df)
 
 
-
-    return True # nothing happening yet
-
-
-# call the season statistics API
-# http://api.sportradar.us/nba/trial/v7/en/seasons/2018/REG/teams/583eca2f-fb46-11e1-82cb-f4ce4684ea4c/statistics.xml?api_key=f795md7eb6e8thbecwchmud8
-#
-# input -   testing = whether or not this is a test run
-#           to_csv = if the data should be exported to a CSV
-#           to_sql = if the data should be created into a SQL database. See the Excel sheet for table organization
-# description - after calling the teams, this will call the SportRadar API 240 times (8 seasons X 30 teams) for each
-#   season for each team.
-#
-def compile_stats(testing, to_csv, to_sql):
+def compile_stats(testing):
+    """
+        runs the program. will call the API and fill in collected data into a DB
+        API call:
+        http://api.sportradar.us/nba/trial/v7/en/seasons/2018/REG/teams/583eca2f-fb46-11e1-82cb-f4ce4684ea4c
+        /statistics.xml?api_key=f795md7eb6e8thbecwchmud8
+    :param testing: if you are testing or debugging
+    :return:
+    """
     season_ids = create_obj_ids(testing, 'season')
     team_ids = create_obj_ids(testing, 'team')
     seasons = [2013, 2014, 2015, 2016, 2016, 2017, 2018, 2019]
@@ -435,8 +551,8 @@ def compile_stats(testing, to_csv, to_sql):
 
     if testing:
         it = ET.iterparse("/Users/Atharva/Documents/Github/NBA_Analysis/nba-team-season-stats-sample.xml")
-        nothing_happening = df_generator(testing, it, ['team_records', 'total', 'average'])
-        # nothing_happening = create_players(testing, it, ('team', 'total', 'average'))
+        df_generator(testing, it, ['team_records', 'total', 'average'])
+        df_generator(testing, it, ['player_records', 'total', 'average'])
     else:
         for season in seasons:
             for team in team_ids:
@@ -447,5 +563,4 @@ def compile_stats(testing, to_csv, to_sql):
                 nothing_happening = creator(testing, it, feeds, )
 
 
-# Testing
-compile_stats(True, False, False)
+compile_stats(True)
