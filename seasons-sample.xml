@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Generation started @ 2019-09-05 18:16:53 +0000 -->
+<league xmlns="http://feed.elasticstats.com/schema/basketball/seasons-v6.0.xsd" id="4353138d-4c22-4396-95d8-5f587d2df25c" name="NBA" alias="NBA">
+  <season id="5b8b57d1-7290-44f8-b29c-353e865c139e" year="2012">
+    <type code="PRE" name="Pre-season"/>
+  </season>
+  <season id="5f45c666-ba68-48d6-a905-f19702ab7e4c" year="2012">
+    <type code="PST" name="Post-season"/>
+  </season>
+  <season id="1e20b802-0e4c-49f2-8045-f02a8105a71e" year="2012">
+    <type code="REG" name="Regular Season"/>
+  </season>
+  <season id="b68b1b17-1f2c-458f-9bdf-1b08dc33c1ed" year="2013" start_date="2013-10-05" end_date="2013-10-25" status="closed">
+    <type code="PRE" name="Pre-season"/>
+  </season>
+  <season id="22ae1aa6-d28a-452f-b6ce-c120e03c6b7d" year="2013" start_date="2014-04-19" end_date="2014-06-15" status="closed">
+    <type code="PST" name="Post-season"/>
+  </season>
+  <season id="5ddc217a-a958-4616-9bdf-e081022c440b" year="2013" start_date="2013-10-29" end_date="2014-04-16" status="closed">
+    <type code="REG" name="Regular Season"/>
+  </season>
+  <season id="eb322501-7291-457b-9bbb-b4106ecf9564" year="2014" start_date="2014-10-04" end_date="2014-10-24" status="closed">
+    <type code="PRE" name="Pre-season"/>
+  </season>
+  <season id="5ba3cd4d-495b-4683-bfbe-56ba2eb84cf2" year="2014" start_date="2015-04-18" end_date="2015-06-16" status="closed">
+    <type code="PST" name="Post-season"/>
+  </season>
+  <season id="fb89a852-3f68-4505-85b0-19b428b261d5" year="2014" start_date="2014-10-28" end_date="2015-04-15" status="closed">
+    <type code="REG" name="Regular Season"/>
+  </season>
+  <season id="cf4c5443-e224-4f97-8698-27996a322fd3" year="2015" start_date="2015-10-02" end_date="2015-10-23" status="closed">
+    <type code="PRE" name="Pre-season"/>
+  </season>
+  <season id="529bed34-5a8d-46d4-9eef-114bd1340867" year="2015" start_date="2016-04-16" end_date="2016-06-19" status="closed">
+    <type code="PST" name="Post-season"/>
+  </season>
+  <season id="698590c2-3579-4d4e-a931-3d6dff427ee2" year="2015" start_date="2015-10-27" end_date="2016-04-13" status="closed">
+    <type code="REG" name="Regular Season"/>
+  </season>
+  <season id="78c6a651-c8ce-4671-9429-ed36dc6f33bf" year="2016" start_date="2016-10-01" end_date="2016-10-21" status="closed">
+    <type code="PRE" name="Pre-season"/>
+  </season>
+  <season id="588d394f-395b-449b-afb8-87da6451421c" year="2016" start_date="2017-04-15" end_date="2017-06-12" status="closed">
+    <type code="PST" name="Post-season"/>
+  </season>
+  <season id="03241c9e-731b-40d0-a36f-bcc9932d055b" year="2016" start_date="2016-10-25" end_date="2017-04-12" status="closed">
+    <type code="REG" name="Regular Season"/>
+  </season>
+  <season id="269501e2-f4fa-4328-ab65-4bafa7889f29" year="2017" start_date="2017-09-30" end_date="2017-10-13" status="closed">
+    <type code="PRE" name="Pre-season"/>
+  </season>
+  <season id="75907e90-d5c1-433e-b42b-1326c68cfc7f" year="2017" start_date="2018-04-14" end_date="2018-06-08" status="closed">
+    <type code="PST" name="Post-season"/>
+  </season>
+  <season id="7dcb5184-ab33-49fe-bd18-c4ca2b1cfc08" year="2017" start_date="2017-10-17" end_date="2018-04-11" status="closed">
+    <type code="REG" name="Regular Season"/>
+  </season>
+  <season id="86a687a8-74fa-4c31-92a7-40498d3f3d8b" year="2018" start_date="2018-09-28" end_date="2018-10-12" status="closed">
+    <type code="PRE" name="Pre-season"/>
+  </season>
+  <season id="31dbd74e-7b42-4b97-ae0f-a4e71a4221c4" year="2018" start_date="2019-04-13" end_date="2019-06-13" status="closed">
+    <type code="PST" name="Post-season"/>
+  </season>
+  <season id="47c9979e-5c3f-453d-ac75-734d17412e3f" year="2018" start_date="2018-10-16" end_date="2019-04-10" status="closed">
+    <type code="REG" name="Regular Season"/>
+  </season>
+  <season id="b464fec4-8fb6-4f7f-9b09-e19eb82d2d92" year="2019" status="scheduled">
+    <type code="PRE" name="Pre-season"/>
+  </season>
+  <season id="9e95ea77-2fc4-45d7-8893-e6cc27fc2cd2" year="2019" start_date="2020-04-18" status="scheduled">
+    <type code="PST" name="Post-season"/>
+  </season>
+  <season id="191e5d0e-ad55-43ef-995c-317ae9ea1213" year="2019" start_date="2019-10-22" end_date="2020-04-15" status="scheduled">
+    <type code="REG" name="Regular Season"/>
+  </season>
+</league>
+
