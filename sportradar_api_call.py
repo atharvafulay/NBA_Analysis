@@ -3,12 +3,14 @@ import xml.etree.ElementTree as ET
 import time
 import sqlite3
 import pandas as pd
-# first need team IDs - seems like we have to pull this from their Standings API call
-# http://api.sportradar.us/nba/trial/v7/en/seasons/2018/REG/standings.xml?api_key=f795md7eb6e8thbecwchmud8
 
 
-# creates database with tables according to the FieldAnalysis.xlsx > Proposed tables
 def create_db(testing):
+    """
+        creates the DB (if it doesn't exist) according to the FieldAnalysis.xlsx > Proposed tables
+    :param testing: if you are testing or debugging
+    :return:
+    """
     if testing:
         conn = sqlite3.connect('TestDB.db')
     else:
@@ -18,30 +20,39 @@ def create_db(testing):
 
     cur.execute('''CREATE TABLE IF NOT EXISTS Season (
         [id] INTEGER PRIMARY KEY,
-        [season_name] text, 
-        [season_id] integer, 
-        [sportradar_id] text,
+        [name] text NOT NULL, 
+        [codename] text NOT NULL, 
+        [year] integer NOT NULL, 
+        [sportradar_id] text NOT NULL, 
         [type] text,
-        [add_date] date,
-        [update_date] date,
-        [version] integer,
-        [is_deleted] boolean
-        )''')
+        [add_date] date NOT NULL, 
+        [update_date] date NOT NULL, 
+        [version] integer NOT NULL, 
+        [is_deleted] boolean,
+        CONSTRAINT unique_codename UNIQUE (codename)
+        );''')
 
     cur.execute('''CREATE TABLE IF NOT EXISTS Team (
         [id] INTEGER PRIMARY KEY,
+        [season_id] text,
         [name] text,
         [market] text,
-        [year] integer
-        [season_id] text,
-        [sr_id] text
+        [wins] integer, 
+        [losses] integer, 
+        [win_pct] float, 
+        [points_for] float,
+        [points_against] float, 
+        [point_diff] float,
+        [sr_id] text,
         [sr_internal] text,
         [reference] int,
         [add_date] date,
         [update_date] date,
         [version] integer,
-        [is_deleted] boolean
-        )''')
+        [is_deleted] boolean,
+        CONSTRAINT unique_codename UNIQUE (market, name),
+        CONSTRAINT season_id_FK FOREIGN KEY (season_id) REFERENCES Season(id)
+        );''')
 
     cur.execute('''CREATE TABLE IF NOT EXISTS TeamTotal (
         [id] INTEGER PRIMARY KEY,
@@ -284,10 +295,11 @@ def create_db(testing):
         )''')
     conn.commit()
 
-##############################################################################################################################should do this one first, the rest can mimic this
+
 def populate_seasons_table(testing, seasons, season_ids):
     """
-        Inserts season records into the season tables
+        Inserts season records into the season tables. For season_ids, it rotates PRE-season, POST-season, REG-season
+        Also note that "2013" is actually the 2013-2014 season
     :param testing: if you are testing or debugging
     :param seasons: list of years of seasons we are getting data for
     :param season_ids: sport radar IDs for each respective season
@@ -297,8 +309,43 @@ def populate_seasons_table(testing, seasons, season_ids):
         conn = sqlite3.connect('TestDB.db')
     else:
         conn = sqlite3.connect('NBA_Statistics.db')
-    cur = conn.cursor()
-    conn.commit()
+
+    year_index = 0
+
+    for season_id in season_ids:
+        # set up
+        index_mod = (season_ids.index(season_id)) % 3
+
+        if index_mod == 0:
+            season_type = 'PRE'
+            name_type = 'Pre-season'
+            if season_ids.index(season_id) != 0:  # increment the year after the first round
+                year_index += 1
+        elif index_mod == 1:
+            season_type = 'PST'
+            name_type = 'Post-season'
+        else:
+            season_type = 'REG'
+            name_type = 'Regular season'
+
+        fields = [
+            str(seasons[year_index]) + '-' + str(seasons[year_index + 1]) + ' ' + name_type,  # name
+            season_type + str(seasons[year_index])[-2:] + str(seasons[year_index + 1])[-2:],  # codename
+            str(seasons[year_index]),  # year
+            str(season_id),  # sportradar_id
+            str(season_type),  # type
+            str(1),  # version
+            str(0)  # is_deleted
+        ]
+
+        insert_statement = "INSERT OR IGNORE INTO Season (name , codename, year, sportradar_id , type, add_date, " \
+                           "update_date, version ,is_deleted) VALUES (?, ?, ?, ?, ?, DateTime('now'), " \
+                           "DateTime('now'), ?, ?);"
+
+        # SQL inserts
+        cur = conn.cursor()
+        cur.execute(insert_statement, fields)
+        conn.commit()
 
 
 def get_xml(link):
@@ -311,7 +358,6 @@ def get_xml(link):
     return xml.content
 
 
-# take the root to parse and get the ID
 def create_obj_ids(testing, obj):
     """
         gets SportRadar's season and team IDs
@@ -326,9 +372,11 @@ def create_obj_ids(testing, obj):
             it = ET.iterparse("/Users/Atharva/Documents/Github/NBA_Analysis/seasons-sample.xml")
     else:
         if obj == 'team':
-            response_body = get_xml('http://api.sportradar.us/nba/trial/v7/en/seasons/2018/REG/standings.xml?api_key=f795md7eb6e8thbecwchmud8')
+            response_body = get_xml('http://api.sportradar.us/nba/trial/v7/en/seasons/2018'
+                                    '/REG/standings.xml?api_key=f795md7eb6e8thbecwchmud8')
         else:
-            response_body = get_xml('http://api.sportradar.us/nba/trial/v7/en/league/seasons.xml?api_key=f795md7eb6e8thbecwchmud8')
+            response_body = get_xml('http://api.sportradar.us/nba/trial/v7/en/league/'
+                                    'seasons.xml?api_key=f795md7eb6e8thbecwchmud8')
         it = ET.iterparse(response_body)
 
     # from https://stackoverflow.com/a/25920989
@@ -340,20 +388,18 @@ def create_obj_ids(testing, obj):
     object_id_list = list()
 
     for item in root.iter(obj):
-
         list_id = item.attrib['id']  # returns a dictionary with each attrib of the team tag, pulling only ID
         object_id_list.append(list_id)
 
-    print(obj)
-    print(object_id_list)
     return object_id_list
 
 
-def insert_team_team(testing, df):
+def insert_team(testing, df, season_id):
     """
         insert team data into DB
     :param testing: if you are testing or debugging
     :param df: data frame generated to place into DB
+    :param season_id: SportRadar ID for Seasons for the FK
     :return:
     """
     if testing:
@@ -361,10 +407,36 @@ def insert_team_team(testing, df):
     else:
         conn = sqlite3.connect('NBA_Statistics.db')
 
-    print('1\n', df)
-    cur = conn.cursor()
-    conn.commit()
-    pass
+    # print(season_id)
+    # print('1\n', df.columns)
+
+    for index, row in df.iterrows():
+        fields = [
+            str(season_id),  # [season_id] text,
+            str(row['name']),  # [name] text,
+            str(row['market']),  # [market] text,
+            str(row['wins']),  # wins int,
+            str(row['losses']),  # losses int
+            str(row['win_pct']),  # win_pct float
+            str(row['points_for']),  # points_for float
+            str(row['points_against']),  # points_against float
+            str(row['point_diff']),  # point_diff float
+            str(row['id']),  # [sr_id] text,
+            str(row['sr_id']),  # [sr_internal] text,
+            str(row['reference']),  # [reference] int,
+        ]
+
+        # print(fields)
+
+        insert_statement = "INSERT OR IGNORE INTO Team(season_id, name, market, wins, losses, win_pct, points_for, " \
+                           "points_against, point_diff, sr_id, sr_internal, reference, add_date, update_date, " \
+                           "version, is_deleted) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, DateTime('now'), " \
+                           "DateTime('now'), 1, 0); "
+
+        # SQL inserts
+        cur = conn.cursor()
+        cur.execute(insert_statement, fields)
+        conn.commit()
 
 
 def insert_team_total(testing, df):
@@ -379,7 +451,7 @@ def insert_team_total(testing, df):
     else:
         conn = sqlite3.connect('NBA_Statistics.db')
 
-    print('2\n', df)
+    # print('2\n', df)
     cur = conn.cursor()
     conn.commit()
     pass
@@ -397,13 +469,13 @@ def insert_team_average(testing, df):
     else:
         conn = sqlite3.connect('NBA_Statistics.db')
 
-    print('3\n', df)
+    # print('3\n', df)
     cur = conn.cursor()
     conn.commit()
     pass
 
 
-def insert_player_player(testing, df):
+def insert_player(testing, df):
     """
         insert player data into DB
     :param testing: if you are testing or debugging
@@ -415,7 +487,7 @@ def insert_player_player(testing, df):
     else:
         conn = sqlite3.connect('NBA_Statistics.db')
 
-    print('4\n', df)
+    # print('4\n', df)
     cur = conn.cursor()
     conn.commit()
     pass
@@ -433,7 +505,7 @@ def insert_player_total(testing, df):
     else:
         conn = sqlite3.connect('NBA_Statistics.db')
 
-    print('5\n', df)
+    # print('5\n', df)
     cur = conn.cursor()
     conn.commit()
     pass
@@ -451,10 +523,36 @@ def insert_player_average(testing, df):
     else:
         conn = sqlite3.connect('NBA_Statistics.db')
 
-    print('6\n', df)
+    # print('6\n', df)
     cur = conn.cursor()
     conn.commit()
     pass
+
+
+def get_parent_entity_id(feed, root):
+    """
+    want to get the parent entity IDs. In this case, the Team's parent entity is the season. For player, it's team.
+    :param feed: this will be 'player' or 'team' to decide which parent we need to get
+    :param root: this is the XML tree
+    :return: return the season or team ID based on the feed
+    """
+    if 'team' in feed:
+        # print("WE MADE IT HERE AT LEAST")
+        # print(ET.tostring(root))
+
+        for item in root.iter('season'):
+            season_id = item.attrib['id']  # returns a dictionary with each attrib of the team tag, pulling only ID
+            return season_id
+
+    else:
+        print("WE MADE IT HERE AT LEAST NOPE")
+        print(ET.tostring(root))
+
+        for item in root.iter('team'):
+            team_id = item.attrib['id']  # returns a dictionary with each attrib of the team tag, pulling only ID
+            return team_id
+
+    return True
 
 
 def df_generator(testing, tree, feeds):
@@ -478,6 +576,10 @@ def df_generator(testing, tree, feeds):
         if '}' in el.tag:
             el.tag = el.tag.split('}', 1)[1]  # strip all namespaces
     root = tree.root
+
+    # this will get the parent entity ID so we can have put it in the DB as a FK. Team's parent = Season, player's
+    # parent = Team. Note that it is only used for the Team and Player inserts, not all of them.
+    parent_entity_id = get_parent_entity_id(feeds[0], root)
 
     attrib_entity_values = list()
     attrib_entity_keys = list()
@@ -524,11 +626,11 @@ def df_generator(testing, tree, feeds):
 
     # call certain products based on the entity
     if feeds[0] == 'team_records':
-        insert_team_team(testing, entity_df)
+        insert_team(testing, entity_df, parent_entity_id)
         insert_team_total(testing, total_df)
         insert_team_average(testing, average_df)
     else:
-        insert_player_player(testing, entity_df)
+        insert_player(testing, entity_df, parent_entity_id)
         insert_player_total(testing, total_df)
         insert_player_average(testing, average_df)
 
@@ -544,23 +646,43 @@ def compile_stats(testing):
     """
     season_ids = create_obj_ids(testing, 'season')
     team_ids = create_obj_ids(testing, 'team')
-    seasons = [2013, 2014, 2015, 2016, 2016, 2017, 2018, 2019]
+    seasons = [2012, 2013, 2014, 2015, 2016, 2016, 2017, 2018, 2019]
+
+    team_feeds = ['team_records', 'total', 'average']
+    player_feeds = ['player_records', 'total', 'average']
 
     create_db(testing)
+    # print(season_ids)
+    # print("teamIDS", team_ids)
     populate_seasons_table(testing, seasons, season_ids)
 
     if testing:
+        it = ET.iterparse("/Users/Atharva/Documents/Github/NBA_Analysis/teams-sample.xml")
+        df_generator(testing, it, team_feeds)
+
+        # it is working up til here.
+
         it = ET.iterparse("/Users/Atharva/Documents/Github/NBA_Analysis/nba-team-season-stats-sample.xml")
-        df_generator(testing, it, ['team_records', 'total', 'average'])
-        df_generator(testing, it, ['player_records', 'total', 'average'])
+        df_generator(testing, it, player_feeds)
     else:
         for season in seasons:
             for team in team_ids:
-                time.sleep(1) # API allows 1 call/second
-                response_xml = 'http://api.sportradar.us/nba/trial/v7/en/seasons/' + season + '/REG/teams/' + team + '/statistics.xml?api_key=f795md7eb6e8thbecwchmud8'
+
+                # teams
+                time.sleep(1)  # API allows 1 call/second
+                response_xml = 'http://api.sportradar.us/nba/trial/v7/en/seasons/' + season + \
+                               '/REG/standings.xml?api_key=f795md7eb6e8thbecwchmud8'
                 content = response_xml.content
                 it = ET.iterparse(content)
-                nothing_happening = creator(testing, it, feeds, )
+                df_generator(testing, it, team_feeds)
+
+                # players
+                time.sleep(1)  # API allows 1 call/second
+                response_xml = 'http://api.sportradar.us/nba/trial/v7/en/seasons/' + season + '/REG/teams/' + team + \
+                               '/statistics.xml?api_key=f795md7eb6e8thbecwchmud8'
+                content = response_xml.content
+                it = ET.iterparse(content)
+                df_generator(testing, it, player_feeds)
 
 
 compile_stats(True)
