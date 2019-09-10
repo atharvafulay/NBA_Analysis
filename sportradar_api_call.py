@@ -51,7 +51,7 @@ def create_db(testing):
         [version] integer,
         [is_deleted] boolean,
         CONSTRAINT unique_codename UNIQUE (market, name),
-        CONSTRAINT season_id_FK FOREIGN KEY (season_id) REFERENCES Season(id)
+        CONSTRAINT season_id_FK FOREIGN KEY (season_id) REFERENCES Season(sportradar_id)
         );''')
 
     cur.execute('''CREATE TABLE IF NOT EXISTS TeamTotal (
@@ -174,7 +174,6 @@ def create_db(testing):
         [season_id] integer,
         [first_name] text,
         [last_name] text,
-        [year] integer,
         [sr_id] text,
         [sr_internal] text,
         [Reference] integer,
@@ -184,7 +183,10 @@ def create_db(testing):
         [add_date] date,
         [update_date] date,
         [version] integer,
-        [is_deleted] boolean
+        [is_deleted] boolean,
+        CONSTRAINT unique_codename UNIQUE (first_name, last_name),
+        CONSTRAINT team_id_FK FOREIGN KEY (team_id) REFERENCES Team(sr_id),
+        CONSTRAINT season_id_FK FOREIGN KEY (season_id) REFERENCES Season(sportradar_id)
         )''')
 
     cur.execute('''CREATE TABLE IF NOT EXISTS PlayerTotal (
@@ -475,11 +477,13 @@ def insert_team_average(testing, df):
     pass
 
 
-def insert_player(testing, df):
+def insert_player(testing, df, team_id, season_id):
     """
         insert player data into DB
     :param testing: if you are testing or debugging
     :param df: data frame generated to place into DB
+    :param team_id: SportRadar Team ID for the FK in the database
+    :param season_id: SportRadar Season ID for second FK in db
     :return:
     """
     if testing:
@@ -488,9 +492,34 @@ def insert_player(testing, df):
         conn = sqlite3.connect('NBA_Statistics.db')
 
     # print('4\n', df)
-    cur = conn.cursor()
-    conn.commit()
-    pass
+    # print(df.columns)
+
+    for index, row in df.iterrows():
+        # print(row)
+        fields = [
+            str(team_id),  # [team_id] text
+            str(season_id),  # [season_id] text
+            str(row['id']),  # [sr_id] text
+            str(row['first_name']),  # first_name
+            str(row['last_name']),  # last_name
+            str(row['position']),  # position
+            str(row['primary_position']),  # primary_position
+            str(row['jersey_number']),  # jersey_number
+            str(row['sr_id']),  # [sr_internal] text
+            str(row['reference'])  # [reference] int
+        ]
+
+        # print(fields)
+
+        insert_statement = "INSERT OR IGNORE INTO Player(team_id, season_id, sr_id, first_name, last_name, position, " \
+                           "primary_position, jersey_number, sr_internal, reference, add_date, update_date, version, " \
+                           "is_deleted) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, DateTime('now'), DateTime('now'), 1, 0); "
+
+        # print(insert_statement)
+        # SQL inserts
+        cur = conn.cursor()
+        # cur.execute(insert_statement, fields)
+        conn.commit()
 
 
 def insert_player_total(testing, df):
@@ -541,7 +570,7 @@ def get_parent_entity_id(feed, root):
         # print(ET.tostring(root))
 
         for item in root.iter('season'):
-            season_id = item.attrib['id']  # returns a dictionary with each attrib of the team tag, pulling only ID
+            season_id = item.attrib['id']
             return season_id
 
     else:
@@ -549,10 +578,9 @@ def get_parent_entity_id(feed, root):
         print(ET.tostring(root))
 
         for item in root.iter('team'):
-            team_id = item.attrib['id']  # returns a dictionary with each attrib of the team tag, pulling only ID
+            team_id = item.attrib['id']
+            # print("THIS IS THE TEAM ID:", team_id)
             return team_id
-
-    return True
 
 
 def df_generator(testing, tree, feeds):
@@ -599,11 +627,27 @@ def df_generator(testing, tree, feeds):
 
     # So we import team_record but are only using team for the team entity attributes (this loop)
     for item in root.iter(base_node):
+
+
+        # IF PLAYER
+        print(item.tag)
+        # IF not jersey in attrib
+        if "jersey_number" not in item.attrib:
+            print("NO JERSEY ID")
+        # then find the index of the Jersey ID, and place null there in the Values list
+
+
         # don't have to do this for keys every time, is only for the DF headers
         if len(attrib_entity_keys) == 0:
             attrib_entity_keys = (list(item.attrib.keys()))
         # this adds the current total records to the list, where each total.attrib.values() is a new list item
         attrib_entity_values.append(list(item.attrib.values()))
+
+
+    print("HERE 1:\n", attrib_entity_keys)
+
+
+    print("\n\n AND HERE 2: ", attrib_entity_values)
 
     # obj would be "team_records" or "player_records", this will limit it to the correct node children
     for obj in root.iter(feeds[0]):
@@ -630,7 +674,8 @@ def df_generator(testing, tree, feeds):
         insert_team_total(testing, total_df)
         insert_team_average(testing, average_df)
     else:
-        insert_player(testing, entity_df, parent_entity_id)
+        season_id = get_parent_entity_id('team', root) # need this so that we can fill season_id on the Player table
+        insert_player(testing, entity_df, parent_entity_id, season_id)
         insert_player_total(testing, total_df)
         insert_player_average(testing, average_df)
 
