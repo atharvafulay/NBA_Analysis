@@ -23,7 +23,7 @@ def create_db(testing):
         [name] text NOT NULL, 
         [codename] text NOT NULL, 
         [year] integer NOT NULL, 
-        [sportradar_id] text NOT NULL, 
+        [sr_id] text NOT NULL, 
         [type] text,
         [add_date] date NOT NULL, 
         [update_date] date NOT NULL, 
@@ -320,13 +320,12 @@ def create_db(testing):
     conn.commit()
 
 
-def populate_seasons_table(testing, seasons, season_ids):
+def populate_seasons_table(testing, seasons):
     """
         Inserts season records into the season tables. For season_ids, it rotates PRE-season, POST-season, REG-season
         Also note that "2013" is actually the 2013-2014 season
     :param testing: if you are testing or debugging
-    :param seasons: list of years of seasons we are getting data for
-    :param season_ids: sport radar IDs for each respective season
+    :param season_ids: dictionary of sport radar IDs and year for each season and season type (pre, post, reg)
     :return:
     """
     if testing:
@@ -334,17 +333,17 @@ def populate_seasons_table(testing, seasons, season_ids):
     else:
         conn = sqlite3.connect('NBA_Statistics.db')
 
-    year_index = 0
+    season_ids = list(seasons.keys())
 
     for season_id in season_ids:
+        season_year = seasons[season_id]
+
         # set up
         index_mod = (season_ids.index(season_id)) % 3
 
         if index_mod == 0:
             season_type = 'PRE'
             name_type = 'Pre-season'
-            if season_ids.index(season_id) != 0:  # increment the year after the first round
-                year_index += 1
         elif index_mod == 1:
             season_type = 'PST'
             name_type = 'Post-season'
@@ -353,14 +352,15 @@ def populate_seasons_table(testing, seasons, season_ids):
             name_type = 'Regular season'
 
         fields = [
-            str(seasons[year_index]) + '-' + str(seasons[year_index + 1]) + ' ' + name_type,  # name
-            season_type + str(seasons[year_index])[-2:] + str(seasons[year_index + 1])[-2:],  # codename
-            str(seasons[year_index]),  # year
+            str(season_year) + '-' + str(int(season_year) + 1) + ' ' + name_type,  # name
+            season_type + str(season_year)[-2:] + str(int(season_year) + 1)[-2:],  # codename
+            str(season_year),  # year
             str(season_id),  # sportradar_id
             str(season_type),  # type
         ]
+        # print(fields)
 
-        insert_statement = "INSERT OR IGNORE INTO Season (name , codename, year, sportradar_id , type, add_date, " \
+        insert_statement = "INSERT OR IGNORE INTO Season (name , codename, year, sr_id , type, add_date, " \
                            "update_date, version ,is_deleted) VALUES (?, ?, ?, ?, ?, DateTime('now'), " \
                            "DateTime('now'), 1, 0);"
 
@@ -580,7 +580,7 @@ def insert_team_average(testing, df, season_and_team_ids):
             str(row['second_chance_made']),  # second_chance_made
         ]
 
-        insert_statement = "INSERT OR IGNORE INTO TeamAverage(team_id,season_id,is_opponent,fast_break_pts," \
+        insert_statement = "INSERT OR IGNORE INTO TeamAverage(season_id,team_id,is_opponent,fast_break_pts," \
                            "points_off_turnovers,second_chance_pts,minutes,points,off_rebounds,def_rebounds,rebounds," \
                            "assists,steals,blocks,turnovers,personal_fouls,flagrant_fouls,blocked_att," \
                            "field_goals_made,field_goals_att,three_points_made,three_points_att,free_throws_made," \
@@ -636,19 +636,11 @@ def insert_player(testing, df, team_id, season_id, total_df, average_df):
         cur.execute(insert_statement, fields)
         conn.commit()
 
-        player_id = str(row['id'])
-        # print(player_id)
-        # print(total_df.columns)
-
-        # player_total_df = total_df.loc[total_df.player_id == player_id]
-        # player_average_df = average_df.loc[average_df.player_id == player_id]
-        # print(player_total_df)
-
-        insert_player_total(testing, total_df, player_id, team_id, season_id)
-        insert_player_average(testing, average_df, player_id, team_id, season_id)
+        insert_player_total(testing, total_df, team_id, season_id)
+        insert_player_average(testing, average_df, team_id, season_id)
 
 
-def insert_player_total(testing, df, player_id, team_id, season_id):
+def insert_player_total(testing, df, team_id, season_id):
     """
         insert player totals data into DB
     :param testing: if you are testing or debugging
@@ -662,7 +654,7 @@ def insert_player_total(testing, df, player_id, team_id, season_id):
 
     for index, row in df.iterrows():
         fields = [
-            player_id,  # player_id
+            str(row['id']),  # player_id
             team_id,
             season_id,
             str(row['games_played']),  # games_played
@@ -743,7 +735,7 @@ def insert_player_total(testing, df, player_id, team_id, season_id):
         conn.commit()
 
 
-def insert_player_average(testing, df, player_id, team_id, season_id):
+def insert_player_average(testing, df, team_id, season_id):
     """
         insert player averages data into DB
     :param testing: if you are testing or debugging
@@ -757,7 +749,7 @@ def insert_player_average(testing, df, player_id, team_id, season_id):
 
     for index, row in df.iterrows():
         fields = [
-            player_id,  # player_id
+            str(row['id']),  # player_id
             team_id,
             season_id,
             str(row['minutes']),  # minutes
@@ -809,3 +801,17 @@ def insert_player_average(testing, df, player_id, team_id, season_id):
         cur = conn.cursor()
         cur.execute(insert_statement, fields)
         conn.commit()
+
+
+def clean_up_missing_jerseys(testing):
+
+    if testing:
+        conn = sqlite3.connect('TestDB.db')
+    else:
+        conn = sqlite3.connect('NBA_Statistics.db')
+
+    update_statement = "UPDATE Player SET jersey_number = NULL WHERE jersey_number = 'None';"
+
+    cur = conn.cursor()
+    cur.execute(update_statement)
+    conn.commit()
