@@ -4,16 +4,51 @@ import time
 import pandas as pd
 import sql_functions  # other .py file
 import api_key
+import os
 
 
-def get_xml(link):
+def get_xml(link, object_ids):
     """
-        gets the XML tree
+        creates directory, XML files, and sends back path to XML file
     :param link: API link
+    :param object_ids: gets season_id and team_id for file name
     :return: XML content / tree
     """
+
+    if object_ids[1] is None:
+        season_only = True
+    else:
+        season_only = False
+
     xml = requests.get(link)
-    return xml.content
+    # print(xml.content)
+    root = ET.fromstring(xml.text)
+    tree = ET.ElementTree(root)
+
+    try:
+        # Create target Directory
+        os.mkdir("Raw_XML_Files")
+        os.mkdir("Raw_XML_Files/team")
+        os.mkdir("Raw_XML_Files/season")
+    except FileExistsError:
+        pass
+
+    if object_ids[0] is not None:
+        if season_only:
+            path = "Raw_XML_Files/season/"+str(object_ids[0])+".xml"
+        else:
+            path = "Raw_XML_Files/team/"+str(object_ids[0])+"_team_"+str(object_ids[1])+".xml"
+
+    else:
+        if season_only:
+            path = "Raw_XML_Files/initial_season_setup.xml"
+        else:
+            path = "Raw_XML_Files/initial_team_setup.xml"
+
+    tree.write(path)
+    # print(path)
+
+    return path
 
 
 def remove_xsd(xml):
@@ -45,22 +80,38 @@ def create_obj_ids(testing, obj):
     else:
         if obj == 'team':
             response_body = get_xml('http://api.sportradar.us/nba/trial/v7/en/seasons/2018'
-                                    '/REG/standings.xml?api_key=f795md7eb6e8thbecwchmud8')
+                                    '/REG/standings.xml?api_key=' + api_key.get_key(), [None, 1])
         else:
             response_body = get_xml('http://api.sportradar.us/nba/trial/v7/en/league/'
-                                    'seasons.xml?api_key=f795md7eb6e8thbecwchmud8')
-        it = ET.iterparse(response_body)
+                                    'seasons.xml?api_key=' + api_key.get_key(), [None, None])
+
+        print(str(response_body))
+        it = ET.iterparse(str(response_body))
 
     root = remove_xsd(it)
 
     obj_dict = dict()
 
+    skip_pre_season_index = 0
+
     for item in root.iter(obj):
+        print(skip_pre_season_index)
+        if skip_pre_season_index % 3 == 0 or skip_pre_season_index == 1:
+            skip_pre_season_index += 1
+            continue
+        skip_pre_season_index += 1
         if obj == 'team':
             obj_dict[item.attrib['id']] = item.attrib['name']
         else:
+            if skip_pre_season_index % 3 == 0 or skip_pre_season_index == 1:
+                skip_pre_season_index += 1
+                continue
+            skip_pre_season_index += 1
+            if item.attrib['year'] == '2012': # or item.attrib['type'] == 'PRE':
+                continue
             obj_dict[item.attrib['id']] = item.attrib['year']
 
+    print(obj_dict)
     return obj_dict
 
 
@@ -120,12 +171,14 @@ def df_generator(testing, tree, feeds, season_and_team_ids, file_type):
     # and team_records to limit it to ONLY team totals and averages. This is only used for team_records
     base_node = feeds[0].split('_')[0]
 
+    for item in root.iter(base_node):
+        if len(item.attrib.keys()) > len(attrib_entity_keys):
+            attrib_entity_keys = (list(item.attrib.keys()))
+
+    print(attrib_entity_keys)
 
     # fills the entity keys and values
     for item in root.iter(base_node):
-
-        if len(attrib_entity_keys) == 0:
-            attrib_entity_keys = (list(item.attrib.keys()))
 
         # 9/9/2019 - apparently some players don't have a jersey number in the XML provided. this if statement inserts
         # a null instead of whatever the next value would have been
@@ -141,50 +194,56 @@ def df_generator(testing, tree, feeds, season_and_team_ids, file_type):
         # this adds the current total records to the list, where each total.attrib.values() is a new list item
         attrib_entity_values.append(list(item.attrib.values()))
 
+
+
     # obj would be "team_records" or "player", this will limit it to the correct node children
     for obj in root.iter(feeds[0]):
         # print(obj.attrib)
+
+        for tot in obj.iter(feeds[1]):
+            if len(tot.attrib.keys()) > len(attrib_total_keys):
+                attrib_total_keys = (list(tot.attrib.keys()))
+        for avg in obj.iter(feeds[2]):
+            if len(avg.attrib.keys()) > len(attrib_average_keys):
+                attrib_average_keys = (list(avg.attrib.keys()))
 
         # Within the _records nodes, we pull the total and average for each entity.
         # this logic is the same as the loop above, just that it is using feeds as the filter in iter()
         for total in obj.iter(feeds[1]):
             if file_type == 'stats' and feeds[0] == 'player':
-
-                if len(attrib_total_keys) == 0:
-                    total_keys_with_ids = list(total.attrib.keys())
-                    total_keys_with_ids.append('id')
-                    attrib_total_keys = total_keys_with_ids
+                if 'id' not in attrib_total_keys:
+                    attrib_total_keys.append('id')
 
                 total_values_with_ids = list(total.attrib.values())
                 total_values_with_ids.append(str(obj.attrib['id']))
                 attrib_total_values.append(total_values_with_ids)
                 continue
 
-            if len(attrib_total_keys) == 0:
-                attrib_total_keys = (list(total.attrib.keys()))
+            # if len(attrib_total_keys) == 0:
+            #     attrib_total_keys = (list(total.attrib.keys()))
             attrib_total_values.append(list(total.attrib.values()))
 
         for average in obj.iter(feeds[2]):
             if file_type == 'stats' and feeds[0] == 'player':
-
-                if len(attrib_average_keys) == 0:
-                    average_keys_with_ids = list(average.attrib.keys())
-                    average_keys_with_ids.append('id')
-                    attrib_average_keys = average_keys_with_ids
+                if 'id' not in attrib_average_keys:
+                    attrib_average_keys.append('id')
 
                 average_values_with_ids = list(average.attrib.values())
                 average_values_with_ids.append(str(obj.attrib['id']))
                 attrib_average_values.append(average_values_with_ids)
                 continue
 
-            if len(attrib_average_keys) == 0:
-                attrib_average_keys = (list(average.attrib.keys()))
             attrib_average_values.append(list(average.attrib.values()))
+
+    print(attrib_total_keys)
+    print(attrib_total_values)
 
     # convert the list of lists of values, and keys into a DF, feed this to the insert functions
     entity_df = pd.DataFrame(attrib_entity_values, columns=attrib_entity_keys)
     total_df = pd.DataFrame(attrib_total_values, columns=attrib_total_keys)
     average_df = pd.DataFrame(attrib_average_values, columns=attrib_average_keys)
+
+    print('end of function')
 
     # call certain products based on the entity
     if feeds[0] == 'team_records':
@@ -201,7 +260,7 @@ def df_generator(testing, tree, feeds, season_and_team_ids, file_type):
 
         return season_and_team_ids
     else:
-        season_id = get_parent_entity_id('team', root) # need this so that we can fill season_id on the Player table
+        season_id = get_parent_entity_id('team', root)  # need this so that we can fill season_id on the Player table
         sql_functions.insert_player(testing, entity_df, parent_entity_id, season_id, total_df, average_df)
 
 
@@ -238,37 +297,56 @@ def compile_stats(testing):
         df_generator(testing, it, team_feeds, season_and_team_ids, 'stats')
         df_generator(testing, it, player_feeds, season_and_team_ids, 'stats')
     else:
+        ind = 0
         for season_id in season_ids:
 
-            index_mod = (season_ids.index(season_id)) % 3
+            list_season_ids = list(season_ids)
 
-            if index_mod == 0:
-                season_type = 'PRE'
-            elif index_mod == 1:
-                season_type = 'PST'
+            index_mod = (list_season_ids.index(season_id)) % 3
+
+            if index_mod == 0 or index_mod == 1:
+                continue
             else:
                 season_type = 'REG'
 
             # teams
             time.sleep(1)  # API allows 1 call/second
-            api_call = 'http://api.sportradar.us/nba/trial/v7/en/seasons/' + str(season_ids[season_id]) + '/' + \
-                       season_type + '/standings.xml?api_key=' + api_key.get_key()
-            content = api_call.content
-            it = ET.iterparse(content)
+            api_call = get_xml('http://api.sportradar.us/nba/trial/v7/en/seasons/' + str(season_ids[season_id]) +
+                               '/' + season_type + '/standings.xml?api_key=' + api_key.get_key(), [season_id, None])
+
+            it = ET.iterparse(api_call)
             df_generator(testing, it, team_feeds, None, 'teams')
 
+            ind2 = 0
             for team in team_ids:
-
                 season_and_team_ids = [season_id, team]
+                # print(season_and_team_ids)
 
                 # all player info, TeamTotal, TeamAverage
                 time.sleep(1)  # API allows 1 call/second
-                api_call = 'http://api.sportradar.us/nba/trial/v7/en/seasons/' + str(season_ids[season_id]) + \
-                           season_type + '/teams/' + team + '/statistics.xml?api_key=' + api_key.get_key()
-                content = api_call.content
-                it = ET.iterparse(content)
+
+                api_call = get_xml('http://api.sportradar.us/nba/trial/v7/en/seasons/' + str(season_ids[season_id]) +
+                                   '/' + season_type + '/teams/' + team + '/statistics.xml?api_key=' +
+                                   api_key.get_key(), season_and_team_ids)
+
+                it = ET.iterparse(api_call)
                 df_generator(testing, it, team_feeds, season_and_team_ids, 'stats')
                 df_generator(testing, it, player_feeds, season_and_team_ids, 'stats')
+
+                #print('api call:', api_call)
+
+
+                #print(ind2)
+                ind2 += 1
+                if ind2 == 10:
+                    break
+
+            #print(season_id)
+
+            print(ind)
+            ind += 1
+            if ind == 6:
+                break
 
     sql_functions.clean_up_missing_jerseys(testing)
 
@@ -281,4 +359,3 @@ else:
     testing = True
 
 compile_stats(testing)
-
