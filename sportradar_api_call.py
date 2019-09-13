@@ -7,38 +7,38 @@ import api_key
 import os
 
 
-def get_xml(link, object_ids):
+def generate_xml(link, object_ids):
     """
-        creates directory, XML files, and sends back path to XML file
+        creates directory, generates XML files, and sends back path to XML file
     :param link: API link
     :param object_ids: gets season_id and team_id for file name
-    :return: XML content / tree
+    :return: path and file name of the XML that should be processed
     """
 
+    # no team ID provided means that this call is either happening as the initial setup or a new season.
     if object_ids[1] is None:
         season_only = True
     else:
         season_only = False
 
     xml = requests.get(link)
-    # print(xml.content)
     root = ET.fromstring(xml.text)
     tree = ET.ElementTree(root)
 
+    # create directories
     try:
-        # Create target Directory
         os.mkdir("Raw_XML_Files")
         os.mkdir("Raw_XML_Files/team")
         os.mkdir("Raw_XML_Files/season")
     except FileExistsError:
         pass
 
+    # object_ids will have None, None as the two values when setting up the initial seasons and teams lists
     if object_ids[0] is not None:
-        if season_only:
-            path = "Raw_XML_Files/season/"+str(object_ids[0])+".xml"
-        else:
-            path = "Raw_XML_Files/team/"+str(object_ids[0])+"_team_"+str(object_ids[1])+".xml"
-
+        if season_only:  # seasons
+            path = "Raw_XML_Files/season/" + str(object_ids[0]) + ".xml"
+        else:  # teams
+            path = "Raw_XML_Files/team/" + str(object_ids[0]) + "_team_" + str(object_ids[1]) + ".xml"
     else:
         if season_only:
             path = "Raw_XML_Files/initial_season_setup.xml"
@@ -46,7 +46,6 @@ def get_xml(link, object_ids):
             path = "Raw_XML_Files/initial_team_setup.xml"
 
     tree.write(path)
-    # print(path)
 
     return path
 
@@ -79,39 +78,39 @@ def create_obj_ids(testing, obj):
             it = ET.iterparse("/Users/Atharva/Documents/Github/NBA_Analysis/seasons-sample.xml")
     else:
         if obj == 'team':
-            response_body = get_xml('http://api.sportradar.us/nba/trial/v7/en/seasons/2018'
-                                    '/REG/standings.xml?api_key=' + api_key.get_key(), [None, 1])
+            response_body = generate_xml('http://api.sportradar.us/nba/trial/v7/en/seasons/2018'
+                                         '/REG/standings.xml?api_key=' + api_key.get_key(),
+                                         [None, 1])  # 1 is insignificant
         else:
-            response_body = get_xml('http://api.sportradar.us/nba/trial/v7/en/league/'
-                                    'seasons.xml?api_key=' + api_key.get_key(), [None, None])
+            response_body = generate_xml('http://api.sportradar.us/nba/trial/v7/en/league/'
+                                         'seasons.xml?api_key=' + api_key.get_key(), [None, None])
 
-        print(str(response_body))
         it = ET.iterparse(str(response_body))
 
     root = remove_xsd(it)
-
     obj_dict = dict()
 
+    # turns out that pre-season has significantly different fields than post-season and regular season, so I have
+    # decided to drop that from the scope of this project. We'll only take regular and post-season.
     skip_pre_season_index = 0
 
     for item in root.iter(obj):
-        print(skip_pre_season_index)
-        if skip_pre_season_index % 3 == 0 or skip_pre_season_index == 1:
-            skip_pre_season_index += 1
-            continue
+        # if skip_pre_season_index % 3 == 0:  # or skip_pre_season_index == 1:
+        #     skip_pre_season_index += 1
+        #     continue
         skip_pre_season_index += 1
         if obj == 'team':
             obj_dict[item.attrib['id']] = item.attrib['name']
         else:
-            if skip_pre_season_index % 3 == 0 or skip_pre_season_index == 1:
-                skip_pre_season_index += 1
-                continue
-            skip_pre_season_index += 1
-            if item.attrib['year'] == '2012': # or item.attrib['type'] == 'PRE':
-                continue
+            # if skip_pre_season_index % 3 == 0:  # or skip_pre_season_index == 1:
+            #     skip_pre_season_index += 1
+            #     continue
+            # skip_pre_season_index += 1
+            # also turns out 2012 might also have significantly different data. Check to see if this is causing an issue
+            # if item.attrib['year'] == '2012': # or item.attrib['type'] == 'PRE':
+            #     continue
             obj_dict[item.attrib['id']] = item.attrib['year']
 
-    print(obj_dict)
     return obj_dict
 
 
@@ -130,6 +129,39 @@ def get_parent_entity_id(feed, root):
         for item in root.iter('team'):
             team_id = item.attrib['id']
             return team_id
+
+
+def fill_field(stat_type_tree, obj, attrib_keys):
+    """
+
+    :param stat_type_tree:
+    :param obj:
+    :param attrib_keys:
+    :return:
+    """
+
+    if 'id' not in attrib_keys:
+        attrib_keys.append('id')
+
+    values_with_ids = [None] * len(attrib_keys)
+
+    for key in attrib_keys:
+
+        if key not in stat_type_tree.attrib:
+            if key == 'id' and obj is not None:
+                stat_type_tree.attrib[key] = str(obj.attrib['id'])
+            else:
+                stat_type_tree.attrib[key] = '_None_'
+
+        values_with_ids[attrib_keys.index(key)] = stat_type_tree.attrib[key]
+
+    # if obj is not None:
+    #     print('key', key)
+    #     print('entire key', attrib_keys)
+    #     print('values_with_ids', values_with_ids)
+    #     print('stat_type_tree_attrib', stat_type_tree.attrib)
+    return values_with_ids
+
 
 
 def df_generator(testing, tree, feeds, season_and_team_ids, file_type):
@@ -171,35 +203,33 @@ def df_generator(testing, tree, feeds, season_and_team_ids, file_type):
     # and team_records to limit it to ONLY team totals and averages. This is only used for team_records
     base_node = feeds[0].split('_')[0]
 
-    for item in root.iter(base_node):
-        if len(item.attrib.keys()) > len(attrib_entity_keys):
-            attrib_entity_keys = (list(item.attrib.keys()))
-
-    print(attrib_entity_keys)
+    # print(attrib_entity_keys)
 
     # fills the entity keys and values
     for item in root.iter(base_node):
 
+        for item_key in root.iter(base_node):
+            if len(item_key.attrib.keys()) > len(attrib_entity_keys):
+                attrib_entity_keys = (list(item_key.attrib.keys()))
+
         # 9/9/2019 - apparently some players don't have a jersey number in the XML provided. this if statement inserts
         # a null instead of whatever the next value would have been
         if item.tag == 'player':
-            if "jersey_number" not in item.attrib:
-                jersey_index = attrib_entity_keys.index('jersey_number')
 
-                xml_attrib = list(item.attrib.values())
-                xml_attrib.insert(jersey_index, 'None')
-                attrib_entity_values.append(xml_attrib)
-                continue
+            # player attributes are so inconsistent that it's easier to just hard code these values and then fill in
+            # None if they are missing from the item.attrib
+            attrib_entity_keys = ['first_name', 'full_name', 'id', 'jersey_number', 'last_name', 'position',
+                                  'primary_position', 'reference', 'sr_id']
 
-        # this adds the current total records to the list, where each total.attrib.values() is a new list item
-        attrib_entity_values.append(list(item.attrib.values()))
-
-
+            attrib_entity_values.append(fill_field(item, None, attrib_entity_keys))
+        else:
+            attrib_entity_values.append(list(item.attrib.values()))
 
     # obj would be "team_records" or "player", this will limit it to the correct node children
     for obj in root.iter(feeds[0]):
         # print(obj.attrib)
 
+        # some of the records are missing certain fields. Iterating though the tree to make sure we have all the columns
         for tot in obj.iter(feeds[1]):
             if len(tot.attrib.keys()) > len(attrib_total_keys):
                 attrib_total_keys = (list(tot.attrib.keys()))
@@ -207,43 +237,36 @@ def df_generator(testing, tree, feeds, season_and_team_ids, file_type):
             if len(avg.attrib.keys()) > len(attrib_average_keys):
                 attrib_average_keys = (list(avg.attrib.keys()))
 
+
+    # obj would be "team_records" or "player", this will limit it to the correct node children
+    for obj in root.iter(feeds[0]):
+        # print(obj.attrib)
+
         # Within the _records nodes, we pull the total and average for each entity.
         # this logic is the same as the loop above, just that it is using feeds as the filter in iter()
         for total in obj.iter(feeds[1]):
             if file_type == 'stats' and feeds[0] == 'player':
-                if 'id' not in attrib_total_keys:
-                    attrib_total_keys.append('id')
-
-                total_values_with_ids = list(total.attrib.values())
-                total_values_with_ids.append(str(obj.attrib['id']))
-                attrib_total_values.append(total_values_with_ids)
-                continue
-
-            # if len(attrib_total_keys) == 0:
-            #     attrib_total_keys = (list(total.attrib.keys()))
-            attrib_total_values.append(list(total.attrib.values()))
+                attrib_total_values.append(fill_field(total, obj, attrib_total_keys))
+            else:
+                attrib_total_values.append(list(total.attrib.values()))
 
         for average in obj.iter(feeds[2]):
             if file_type == 'stats' and feeds[0] == 'player':
-                if 'id' not in attrib_average_keys:
-                    attrib_average_keys.append('id')
+                attrib_average_values.append(fill_field(average, obj, attrib_average_keys))
+            else:
+                attrib_average_values.append(list(average.attrib.values()))
 
-                average_values_with_ids = list(average.attrib.values())
-                average_values_with_ids.append(str(obj.attrib['id']))
-                attrib_average_values.append(average_values_with_ids)
-                continue
-
-            attrib_average_values.append(list(average.attrib.values()))
-
-    print(attrib_total_keys)
-    print(attrib_total_values)
+    # print(attrib_entity_keys)
+    # print(attrib_entity_values)
+    # print(attrib_total_keys)
+    # print(attrib_total_values)
 
     # convert the list of lists of values, and keys into a DF, feed this to the insert functions
     entity_df = pd.DataFrame(attrib_entity_values, columns=attrib_entity_keys)
     total_df = pd.DataFrame(attrib_total_values, columns=attrib_total_keys)
     average_df = pd.DataFrame(attrib_average_values, columns=attrib_average_keys)
 
-    print('end of function')
+    # print('end of function')
 
     # call certain products based on the entity
     if feeds[0] == 'team_records':
@@ -266,14 +289,16 @@ def df_generator(testing, tree, feeds, season_and_team_ids, file_type):
 
 def compile_stats(testing):
     """
-        runs the program. will call the API and fill in collected data into a DB
-        API call:
-        http://api.sportradar.us/nba/trial/v7/en/seasons/2018/REG/teams/583eca2f-fb46-11e1-82cb-f4ce4684ea4c
-        /statistics.xml?api_key=f795md7eb6e8thbecwchmud8
+        sets up the required fields / peripheral information and runs the program.
+    API call:
+    http://api.sportradar.us/nba/trial/v7/en/seasons/2018/REG/teams/583eca2f-fb46-11e1-82cb-f4ce4684ea4c
+    /statistics.xml?api_key=[KEY]
     :param testing: if you are testing or debugging
     :return:
     """
     season_ids = create_obj_ids(testing, 'season')
+    # print(season_ids.values())
+    # print(season_ids.keys())
     time.sleep(1)
     team_ids = create_obj_ids(testing, 'team')
 
@@ -293,69 +318,71 @@ def compile_stats(testing):
         # it is working up til here.
         df_generator(testing, it, team_feeds, None, 'teams')
 
-        it = ET.iterparse("/Users/Atharva/Documents/Github/NBA_Analysis/nba-team-season-stats-sample.xml")
+        it = ET.iterparse("C:/Users/Atharva/Documents/GitHub/NBA_Analysis/Raw_XML_Files/team/fb89a852-3f68-4505-85b0-19b428b261d5_team_583ecfa8-fb46-11e1-82cb-f4ce4684ea4c.xml")
         df_generator(testing, it, team_feeds, season_and_team_ids, 'stats')
         df_generator(testing, it, player_feeds, season_and_team_ids, 'stats')
     else:
         ind = 0
         for season_id in season_ids:
 
-            list_season_ids = list(season_ids)
+            if season_ids[season_id] == '2019'or season_ids[season_id] == '2012':
+                continue
 
+            list_season_ids = list(season_ids)
             index_mod = (list_season_ids.index(season_id)) % 3
 
             if index_mod == 0 or index_mod == 1:
                 continue
+            # have to check if this works. Was throwing errors earlier with the PRE season, but that might have been
+            # resolved by the other fixes made. Need to remove the ==1 above to see if it works.
+            # elif index_mod == 1:
+            #     season_type = "PST"
             else:
                 season_type = 'REG'
 
-            # teams
+            # gets season info
             time.sleep(1)  # API allows 1 call/second
-            api_call = get_xml('http://api.sportradar.us/nba/trial/v7/en/seasons/' + str(season_ids[season_id]) +
-                               '/' + season_type + '/standings.xml?api_key=' + api_key.get_key(), [season_id, None])
+            api_call = generate_xml('http://api.sportradar.us/nba/trial/v7/en/seasons/' + str(season_ids[season_id]) +
+                                    '/' + season_type + '/standings.xml?api_key=' + api_key.get_key(),
+                                    [season_id, None])
 
             it = ET.iterparse(api_call)
             df_generator(testing, it, team_feeds, None, 'teams')
 
+            # iterate through each team and get team/player info
             ind2 = 0
             for team in team_ids:
                 season_and_team_ids = [season_id, team]
-                # print(season_and_team_ids)
 
                 # all player info, TeamTotal, TeamAverage
                 time.sleep(1)  # API allows 1 call/second
 
-                api_call = get_xml('http://api.sportradar.us/nba/trial/v7/en/seasons/' + str(season_ids[season_id]) +
-                                   '/' + season_type + '/teams/' + team + '/statistics.xml?api_key=' +
-                                   api_key.get_key(), season_and_team_ids)
+                api_call = generate_xml('http://api.sportradar.us/nba/trial/v7/en/seasons/' +
+                                        str(season_ids[season_id]) + '/' + season_type + '/teams/' + team
+                                        + '/statistics.xml?api_key=' + api_key.get_key(), season_and_team_ids)
 
                 it = ET.iterparse(api_call)
                 df_generator(testing, it, team_feeds, season_and_team_ids, 'stats')
                 df_generator(testing, it, player_feeds, season_and_team_ids, 'stats')
 
-                #print('api call:', api_call)
-
-
-                #print(ind2)
                 ind2 += 1
+                print("teams:", ind2)
                 if ind2 == 10:
                     break
 
-            #print(season_id)
-
-            print(ind)
+            print("seasons", season_ids[season_id])
             ind += 1
             if ind == 6:
                 break
 
-    sql_functions.clean_up_missing_jerseys(testing)
+    sql_functions.clean_up_players(testing)
 
 
 testing_input = input('testing? Anything other than "Not Testing" will be treated as Yes.\n')
 
 if testing_input == 'Not Testing':
-    testing = False
+    testing_result = False
 else:
-    testing = True
+    testing_result = True
 
-compile_stats(testing)
+compile_stats(testing_result)

@@ -50,8 +50,8 @@ def create_db(testing):
         [update_date] date,
         [version] integer,
         [is_deleted] boolean,
-        CONSTRAINT unique_codename UNIQUE (season_id, market, name),
-        CONSTRAINT season_id_FK FOREIGN KEY (season_id) REFERENCES Season(sportradar_id)
+        CONSTRAINT unique_codename UNIQUE (season_id, sr_id),
+        CONSTRAINT season_id_FK FOREIGN KEY (season_id) REFERENCES Season(sr_id)
         );''')
 
     cur.execute('''CREATE TABLE IF NOT EXISTS TeamTotal (
@@ -125,7 +125,7 @@ def create_db(testing):
         [is_deleted] boolean,
         CONSTRAINT unique_cluster UNIQUE (team_id, season_id, is_opponent),
         CONSTRAINT team_id_FK FOREIGN KEY (team_id) REFERENCES Team(sr_id),
-        CONSTRAINT season_id_FK FOREIGN KEY (season_id) REFERENCES Season(sportradar_id)
+        CONSTRAINT season_id_FK FOREIGN KEY (season_id) REFERENCES Season(sr_id)
         )''')
 
     cur.execute('''CREATE TABLE IF NOT EXISTS TeamAverage (
@@ -174,7 +174,7 @@ def create_db(testing):
         [is_deleted] boolean,
         CONSTRAINT unique_cluster UNIQUE (team_id, season_id, is_opponent),
         CONSTRAINT team_id_FK FOREIGN KEY (team_id) REFERENCES Team(sr_id),
-        CONSTRAINT season_id_FK FOREIGN KEY (season_id) REFERENCES Season(sportradar_id)
+        CONSTRAINT season_id_FK FOREIGN KEY (season_id) REFERENCES Season(sr_id)
         )''')
 
     cur.execute('''CREATE TABLE IF NOT EXISTS Player (
@@ -193,9 +193,9 @@ def create_db(testing):
         [update_date] date,
         [version] integer,
         [is_deleted] boolean,
-        CONSTRAINT unique_cluster UNIQUE (team_id, season_id, first_name, last_name),
+        CONSTRAINT unique_cluster UNIQUE (team_id, season_id, sr_id),
         CONSTRAINT team_id_FK FOREIGN KEY (team_id) REFERENCES Team(sr_id),
-        CONSTRAINT season_id_FK FOREIGN KEY (season_id) REFERENCES Season(sportradar_id)
+        CONSTRAINT season_id_FK FOREIGN KEY (season_id) REFERENCES Season(sr_id)
         )''')
 
     cur.execute('''CREATE TABLE IF NOT EXISTS PlayerTotal (
@@ -265,7 +265,7 @@ def create_db(testing):
         CONSTRAINT unique_cluster UNIQUE (player_id, team_id, season_id),
         CONSTRAINT player_id_FK FOREIGN KEY (player_id) REFERENCES Player(sr_id),
         CONSTRAINT team_id_FK FOREIGN KEY (team_id) REFERENCES Team(sr_id),
-        CONSTRAINT season_id_FK FOREIGN KEY (season_id) REFERENCES Season(sportradar_id)
+        CONSTRAINT season_id_FK FOREIGN KEY (season_id) REFERENCES Season(sr_id)
         )''')
 
     cur.execute('''CREATE TABLE IF NOT EXISTS PlayerAverage (
@@ -314,7 +314,7 @@ def create_db(testing):
         CONSTRAINT unique_cluster UNIQUE (player_id, team_id, season_id),
         CONSTRAINT player_id_FK FOREIGN KEY (player_id) REFERENCES Player(sr_id),
         CONSTRAINT team_id_FK FOREIGN KEY (team_id) REFERENCES Team(sr_id),
-        CONSTRAINT season_id_FK FOREIGN KEY (season_id) REFERENCES Season(sportradar_id)
+        CONSTRAINT season_id_FK FOREIGN KEY (season_id) REFERENCES Season(sr_id)
         )''')
 
     conn.commit()
@@ -630,7 +630,7 @@ def insert_player(testing, df, team_id, season_id, total_df, average_df):
                            "primary_position, jersey_number, sr_internal, reference, add_date, update_date, version, " \
                            "is_deleted) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, DateTime('now'), DateTime('now'), 1, 0); "
 
-        # print(insert_statement)
+        # print(insert_statement, fields)
         # SQL inserts
         cur = conn.cursor()
         cur.execute(insert_statement, fields)
@@ -655,8 +655,8 @@ def insert_player_total(testing, df, team_id, season_id):
     for index, row in df.iterrows():
         fields = [
             str(row['id']),  # player_id
-            team_id,
-            season_id,
+            str(team_id),
+            str(season_id),
             str(row['games_played']),  # games_played
             str(row['games_started']),  # games_started
             str(row['minutes']),  # minutes
@@ -750,8 +750,8 @@ def insert_player_average(testing, df, team_id, season_id):
     for index, row in df.iterrows():
         fields = [
             str(row['id']),  # player_id
-            team_id,
-            season_id,
+            str(team_id),
+            str(season_id),
             str(row['minutes']),  # minutes
             str(row['points']),  # points
             str(row['off_rebounds']),  # off_rebounds
@@ -803,15 +803,19 @@ def insert_player_average(testing, df, team_id, season_id):
         conn.commit()
 
 
-def clean_up_missing_jerseys(testing):
-
+def clean_up_players(testing):
     if testing:
         conn = sqlite3.connect('TestDB.db')
     else:
         conn = sqlite3.connect('NBA_Statistics.db')
 
-    update_statement = "UPDATE Player SET jersey_number = NULL WHERE jersey_number = 'None';"
+    possible_fields = ['jersey_number', 'sr_internal', 'reference']
+    for field in possible_fields:
+        if field == 'primary_position':
+            update_statement = "UPDATE Player SET " + field + " = NULL WHERE " + field + " IN ('_None_','NA'); "
+        else:
+            update_statement = "UPDATE Player SET " + field + " = NULL WHERE " + field + " = '_None_';"
 
-    cur = conn.cursor()
-    cur.execute(update_statement)
-    conn.commit()
+        cur = conn.cursor()
+        cur.execute(update_statement)
+        conn.commit()
