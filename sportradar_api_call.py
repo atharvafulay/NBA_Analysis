@@ -367,13 +367,9 @@ def compile_stats(testing):
 
                 ind2 += 1
                 print("teams:", ind2)
-                if ind2 == 10:
-                    break
 
             print("seasons", season_ids[season_id])
             ind += 1
-            if ind == 6:
-                break
 
     sql_functions.clean_up_players(testing)
 
