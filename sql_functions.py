@@ -325,7 +325,7 @@ def populate_seasons_table(testing, seasons):
         Inserts season records into the season tables. For season_ids, it rotates PRE-season, POST-season, REG-season
         Also note that "2013" is actually the 2013-2014 season
     :param testing: if you are testing or debugging
-    :param season_ids: dictionary of sport radar IDs and year for each season and season type (pre, post, reg)
+    :param seasons: dictionary of sport radar IDs and year for each season and season type (pre, post, reg)
     :return:
     """
     if testing:
@@ -598,10 +598,13 @@ def insert_team_average(testing, df, season_and_team_ids):
 def insert_player(testing, df, team_id, season_id, total_df, average_df):
     """
         insert player data into DB
+
     :param testing: if you are testing or debugging
     :param df: data frame generated to place into DB
     :param team_id: SportRadar Team ID for the FK in the database
     :param season_id: SportRadar Season ID for second FK in db
+    :param total_df: dataframe of player totals, passed through to the insert_player_total function
+    :param average_df: dataframe of player averages, passed through to the insert_player_average function
     :return player_id: so that the PlayerTotal and PlayerAverage functions are called, they have the player_id
     """
     if testing:
@@ -636,21 +639,19 @@ def insert_player(testing, df, team_id, season_id, total_df, average_df):
         cur.execute(insert_statement, fields)
         conn.commit()
 
-        insert_player_total(testing, total_df, team_id, season_id)
-        insert_player_average(testing, average_df, team_id, season_id)
+        insert_player_total(conn, total_df, team_id, season_id)
+        insert_player_average(conn, average_df, team_id, season_id)
 
 
-def insert_player_total(testing, df, team_id, season_id):
+def insert_player_total(conn, df, team_id, season_id):
     """
         insert player totals data into DB
-    :param testing: if you are testing or debugging
+    :param conn: sqlite DB connection
     :param df: data frame generated to place into DB
+    :param team_id: sr_id of the team that player is on
+    :param season_id: sr_id of the season that player is playing in
     :return:
     """
-    if testing:
-        conn = sqlite3.connect('TestDB.db')
-    else:
-        conn = sqlite3.connect('NBA_Statistics.db')
 
     for index, row in df.iterrows():
         fields = [
@@ -735,17 +736,15 @@ def insert_player_total(testing, df, team_id, season_id):
         conn.commit()
 
 
-def insert_player_average(testing, df, team_id, season_id):
+def insert_player_average(conn, df, team_id, season_id):
     """
         insert player averages data into DB
-    :param testing: if you are testing or debugging
+    :param conn: sqlite DB connection
     :param df: data frame generated to place into DB
+    :param team_id: sr_id of the team that player is on
+    :param season_id: sr_id of the season that player is playing in
     :return:
     """
-    if testing:
-        conn = sqlite3.connect('TestDB.db')
-    else:
-        conn = sqlite3.connect('NBA_Statistics.db')
 
     for index, row in df.iterrows():
         fields = [
@@ -800,22 +799,4 @@ def insert_player_average(testing, df, team_id, season_id):
 
         cur = conn.cursor()
         cur.execute(insert_statement, fields)
-        conn.commit()
-
-
-def clean_up_players(testing):
-    if testing:
-        conn = sqlite3.connect('TestDB.db')
-    else:
-        conn = sqlite3.connect('NBA_Statistics.db')
-
-    possible_fields = ['jersey_number', 'sr_internal', 'reference']
-    for field in possible_fields:
-        if field == 'primary_position':
-            update_statement = "UPDATE Player SET " + field + " = NULL WHERE " + field + " IN ('_None_','NA'); "
-        else:
-            update_statement = "UPDATE Player SET " + field + " = NULL WHERE " + field + " = '_None_';"
-
-        cur = conn.cursor()
-        cur.execute(update_statement)
         conn.commit()
